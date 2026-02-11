@@ -3,13 +3,42 @@ import { connectDB } from '@/lib/db';
 import { User } from '@/models/User';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { AuthOptions, Session } from "next-auth";
+import { JWT } from "next-auth/jwt";
+
+declare module "next-auth" {
+  interface User {
+    id: string;
+    role: string;
+  }
+  interface Session {
+    user: User & {
+      role: string;
+      id: string;
+    };
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    role?: string;
+    id?: string;
+  }
+}
+
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+}
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
 
-export const authConfig = {
+export const authConfig: AuthOptions = {
   providers: [
     CredentialsProvider({
       credentials: {
@@ -51,26 +80,23 @@ export const authConfig = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }: { token: Record<string, unknown>; user?: unknown }) {
+    async jwt({ token, user }) {
       if (user) {
-        const userData = user as { role: string; id: string };
-        token.role = userData.role;
-        token.id = userData.id;
+        token.role = (user as AuthUser).role;
+        token.id = (user as AuthUser).id;
       }
       return token;
     },
-    async session({ session, token }: { session: unknown; token: unknown }) {
-      const sessionData = session as { user?: { role?: string; id?: string } };
-      const tokenData = token as { role?: string; id?: string };
-      if (sessionData?.user) {
-        sessionData.user.role = tokenData.role;
-        sessionData.user.id = tokenData.id;
+    async session({ session, token }: { session: Session; token: JWT }) {
+      if (session.user) {
+        session.user.role = token.role || '';
+        session.user.id = token.id || '';
       }
       return session;
     },
   },
   pages: {
     signIn: '/login',
-    signUp: '/register',
   },
 };
+
